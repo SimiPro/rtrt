@@ -1,0 +1,12 @@
+[submodule "Vookoo"]
+	path = Vookoo
+	url = https://github.com/andy-thomason/Vookoo
+[submodule "ext/glfw"]
+	path = ext/glfw
+	url = https://github.com/glfw/glfw
+[submodule "ext/Vookoo"]
+	path = ext/Vookoo
+	url = https://github.com/andy-thomason/Vookoo
+[submodule "ext/glm"]
+	path = ext/glm
+	url = https://github.com/g-truc/glm
