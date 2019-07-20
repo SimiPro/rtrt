@@ -16,6 +16,7 @@
 #include <vku/vku.hpp>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp> // for rotate()
+#include <glm/gtx/rotate_vector.hpp>
 
 struct Uniform {
     glm::vec3 spherePosition;
@@ -130,7 +131,8 @@ int main() {
     // Read the pushConstants example first.
     // 
     Uniform u;
-
+    u.spherePosition = {-3,0,-3};
+    u.sphereRadius = 1;
     int frame = 0;
 
     // Create a single entry uniform buffer.
@@ -154,14 +156,19 @@ int main() {
     update.buffer(ubo.buffer(), 0, sizeof(Uniform));
     update.update(device);
 
+    float phi = M_PI/10;
+    glm::mat3x3 rot = {{cos(phi), sin(phi), 0},
+                        {0,0,1},
+                        {-sin(phi), cos(phi), 0}};
     // Loop waiting for the window to close.
     while (!glfwWindowShouldClose(glfwwindow)) {
         glfwPollEvents();
 
-        // u.rotation = glm::rotate(u.rotation, glm::radians(1.0f), glm::vec3(0, 0, 1));
+        //u.spherePosition = glm::rotate(u.spherePosition, glm::radians(1.0f), glm::vec3(0, 1, 0));
         // u.colour.r = std::sin(frame * 0.01f);
-        u.spherePosition = glm::vec3{0,0,-10};
-        u.sphereRadius = (frame % 1000) / 100.0;
+        float val = 2*M_PI*(frame % 1000) / 1000.0;
+        //u.spherePosition = rot* glm::vec3{0, 0, -10};
+        //u.sphereRadius = (frame % 1000) / 100.0;
         frame++;
 
         // draw one triangle.

@@ -15,14 +15,14 @@ layout (binding = 0) uniform Uniform {
 
 void main() {
   gl_Position = vec4(inPosition, 0.0, 1.0); // Copy 2D position to 3D + depth
-
+  gl_Position.x = gl_Position.x * (WIDTH / HEIGHT);
   vec3 center =  u.spherePosition;
   float radius = u.sphereRadius;
   float radius2 = radius * radius;
 
   vec3 origin = vec3(0, 0, 1);
   vec3 direction = normalize(-origin + gl_Position.xyz);
-  direction = normalize(vec3(direction.x * (WIDTH / HEIGHT), direction.y, direction.z));
+  direction = normalize(vec3(direction.x, direction.y, direction.z));
 
   // ray-sphere intersection
   vec3 L = center - origin;
