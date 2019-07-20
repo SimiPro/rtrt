@@ -5,12 +5,22 @@
 // This is a simple introduction to the vulkan C++ interface by way of Vookoo
 // which is a layer to make creating Vulkan resources easy.
 //
+// In this sample we demonstrate uniforms which allow you to pass values
+// to shaders that will stay the same throughout the whole draw call.
+//
+// Compare this file with pushConstants.cpp to see what we have done.
 
 // Include the demo framework, vookoo (vku) for building objects and glm for maths.
 // The demo framework uses GLFW to create windows.
 #include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 #include <glm/glm.hpp>
+#include <glm/ext.hpp> // for rotate()
+
+struct Uniform {
+    glm::vec3 spherePosition;
+    glm::float32 sphereRadius;
+};
 
 int main() {
   // Initialise the GLFW framework.
@@ -18,19 +28,19 @@ int main() {
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
   // Make a window
-  const char *title = "helloTriangle";
+  const char *title = "uniforms";
   bool fullScreen = false;
   int width = 800;
   int height = 600;
   GLFWmonitor *monitor = nullptr;
   auto glfwwindow = glfwCreateWindow(width, height, title, monitor, nullptr);
 
-
+  {
     // Initialise the Vookoo demo framework.
     vku::Framework fw{title};
     if (!fw.ok()) {
-        std::cout << "Framework creation failed" << std::endl;
-        exit(1);
+      std::cout << "Framework creation failed" << std::endl;
+      exit(1);
     }
 
     // Get a device from the demo framework.
@@ -39,26 +49,33 @@ int main() {
     // Create a window to draw into
     vku::Window window{fw.instance(), device, fw.physicalDevice(), fw.graphicsQueueFamilyIndex(), glfwwindow};
     if (!window.ok()) {
-        std::cout << "Window creation failed" << std::endl;
-        exit(1);
+      std::cout << "Window creation failed" << std::endl;
+      exit(1);
     }
 
-    // Create two shaders, vertex and fragment. See the files helloTriangle.vert
-    // and helloTriangle.frag for details.
+    // Create two shaders, vertex and fragment. See the files uniforms.vert
+    // and uniforms.frag for details.
     vku::ShaderModule vert_{device, "vert.spv"};
     vku::ShaderModule frag_{device, "frag.spv"};
 
+    // Build a template for descriptor sets that use these shaders.
+    vku::DescriptorSetLayoutMaker dslm{};
+    dslm.buffer(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eAll, 1);
+    auto descriptorSetLayout = dslm.createUnique(device);
 
     // Make a default pipeline layout. This shows how pointers
     // to resources are layed out.
+    // 
     vku::PipelineLayoutMaker plm{};
+    plm.descriptorSetLayout(*descriptorSetLayout);
     auto pipelineLayout_ = plm.createUnique(device);
 
     // We will use this simple vertex description.
     // It has a 2D location (x, y) and a colour (r, g, b)
     struct Vertex { glm::vec2 pos; glm::vec3 colour; };
 
-    std::vector<Vertex> vertices;
+    // This is our triangle.
+    std::vector<Vertex> vertices = {};
 
     int num_cube_hori = 800;
     int num_cube_veri = 600;
@@ -110,39 +127,88 @@ int main() {
     auto &cache = fw.pipelineCache();
     auto pipeline = pm.createUnique(device, cache, *pipelineLayout_, renderPass);
 
-    // We only need to create the command buffer(s) once.
-    // This simple function lets us do that.
-    window.setStaticCommands(
-        [&pipeline, &buffer, &vertices](vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi) {
-        vk::CommandBufferBeginInfo bi{};
-        cb.begin(bi);
-        cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
-        cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
-        cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));
-        cb.draw(vertices.size(), 1, 0, 0);
-        cb.endRenderPass();
-        cb.end();
-        }
-    );
+    // Read the pushConstants example first.
+    // 
+    Uniform u;
+
+    int frame = 0;
+
+    // Create a single entry uniform buffer.
+    // We cannot update this buffers with normal memory writes
+    // because reading the buffer may happen at any time.
+    auto ubo = vku::UniformBuffer{device, fw.memprops(), sizeof(Uniform)};
+    int qfi = fw.graphicsQueueFamilyIndex();
+
+    // We need to create a descriptor set to tell the shader where
+    // our buffers are.
+    vku::DescriptorSetMaker dsm{};
+    dsm.layout(*descriptorSetLayout);
+    auto sets = dsm.create(device, fw.descriptorPool());
+
+    // Next we need to update the descriptor set with the uniform buffer.
+    vku::DescriptorSetUpdater update;
+    update.beginDescriptorSet(sets[0]);
+
+    // Point the descriptor set at the storage buffer.
+    update.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
+    update.buffer(ubo.buffer(), 0, sizeof(Uniform));
+    update.update(device);
 
     // Loop waiting for the window to close.
     while (!glfwWindowShouldClose(glfwwindow)) {
         glfwPollEvents();
 
-        // draw one triangle.
-        window.draw(device, fw.graphicsQueue());
+        // u.rotation = glm::rotate(u.rotation, glm::radians(1.0f), glm::vec3(0, 0, 1));
+        // u.colour.r = std::sin(frame * 0.01f);
+        u.spherePosition = glm::vec3{0,0,-10};
+        u.sphereRadius = (frame % 1000) / 100.0;
+        frame++;
 
-        // Very crude method to prevent your GPU from overheating.
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        // draw one triangle.
+        // Unlike helloTriangle, we generate the command buffer dynamicly
+        // because it will contain different values on each frame.
+        window.draw(
+        device, fw.graphicsQueue(),
+        [&](vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi) {
+            vk::CommandBufferBeginInfo bi{};
+            cb.begin(bi);
+            // Instead of pushConstants() we use updateBuffer()
+            // This has an effective max of about 64k.
+            // Like pushConstants(), this takes a copy of the uniform buffer
+            // at the time we create this command buffer.
+            cb.updateBuffer(
+            ubo.buffer(), 0, sizeof(u), (const void*)&u
+            );
+            // We may or may not need this barrier. It is probably a good precaution.
+            // ubo.barrier(
+            //  cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTopOfPipe,
+            // vk::DependencyFlagBits::eByRegion,
+            // vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eShaderRead, qfi, qfi
+            //);
+
+            // Unlike in the pushConstants example, we need to bind descriptor sets
+            // to tell the shader where to find our buffer.
+            cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout_, 0, sets[0], nullptr);
+
+            cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
+            cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+
+            cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));
+            cb.draw(vertices.size(), 1, 0, 0);
+            cb.endRenderPass();
+            cb.end();
+        }
+        );
+
+      // Very crude method to prevent your GPU from overheating.
+      std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
     // Wait until all drawing is done and then kill the window.
     device.waitIdle();
-
-    glfwDestroyWindow(glfwwindow);
-    glfwTerminate();
-
     // The Framework and Window objects will be destroyed here.
-
-    return 0;
+  }
+  glfwDestroyWindow(glfwwindow);
+  glfwTerminate();
+  return 0;
 }

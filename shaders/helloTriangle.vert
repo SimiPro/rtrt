@@ -7,11 +7,17 @@ layout(location = 0) out vec3 fragColour;
 float WIDTH = 800;
 float HEIGHT = 600;
 
+layout (binding = 0) uniform Uniform {
+  vec3 spherePosition;
+  float sphereRadius;
+} u;
+
+
 void main() {
   gl_Position = vec4(inPosition, 0.0, 1.0); // Copy 2D position to 3D + depth
 
-  vec3 center = vec3(0, 0, -10);
-  float radius = 2.0f;
+  vec3 center =  u.spherePosition;
+  float radius = u.sphereRadius;
   float radius2 = radius * radius;
 
   vec3 origin = vec3(0, 0, 1);
